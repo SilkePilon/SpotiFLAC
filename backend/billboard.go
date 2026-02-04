@@ -89,7 +89,7 @@ func parseBillboardHTML(htmlContent string) ([]BillboardEntry, error) {
 
 	// Billboard uses ul.o-chart-results-list-row for each chart entry
 	// Each row contains: rank, image, title (h3#title-of-a-story), artist (span.c-label), stats
-	
+
 	// Pattern to find chart rows - looking for the row structure
 	rowPattern := regexp.MustCompile(`(?s)<ul[^>]*class="[^"]*o-chart-results-list-row[^"]*"[^>]*>(.*?)</ul>`)
 	rows := rowPattern.FindAllStringSubmatch(htmlContent, -1)
@@ -103,10 +103,10 @@ func parseBillboardHTML(htmlContent string) ([]BillboardEntry, error) {
 		if len(row) < 2 {
 			continue
 		}
-		
+
 		rowContent := row[1]
 		entry := extractChartEntry(rowContent)
-		
+
 		if entry.Title != "" && entry.Artist != "" && entry.Rank > 0 {
 			entries = append(entries, entry)
 		}
@@ -291,15 +291,15 @@ func extractStat(rowContent string, liIndex int) int {
 func cleanText(text string) string {
 	// Decode HTML entities (&#039; -> ', &amp; -> &, etc.)
 	text = html.UnescapeString(text)
-	
+
 	// Remove any HTML tags that might be in the text
 	tagPattern := regexp.MustCompile(`<[^>]*>`)
 	text = tagPattern.ReplaceAllString(text, "")
-	
+
 	// Normalize whitespace
 	text = strings.TrimSpace(text)
 	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
-	
+
 	return text
 }
 
@@ -312,7 +312,7 @@ func GetCurrentBillboardDate() string {
 	if daysUntilSaturday == 0 && now.Weekday() != time.Saturday {
 		daysUntilSaturday = 7
 	}
-	
+
 	// Get the most recent Saturday that has been published
 	// Charts are typically available by Wednesday for the following Saturday
 	saturday := now.AddDate(0, 0, -int(now.Weekday()+1)%7)

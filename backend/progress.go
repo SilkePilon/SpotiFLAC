@@ -31,6 +31,7 @@ type DownloadItem struct {
 	EndTime      int64          `json:"end_time"`
 	ErrorMessage string         `json:"error_message"`
 	FilePath     string         `json:"file_path"`
+	Source       string         `json:"source"`
 }
 
 var (
@@ -248,7 +249,7 @@ func GetCurrentItemID() string {
 	return currentItemID
 }
 
-func CompleteDownloadItem(id, filePath string, finalSize float64) {
+func CompleteDownloadItem(id, filePath string, finalSize float64, source string) {
 	downloadQueueLock.Lock()
 	defer downloadQueueLock.Unlock()
 
@@ -259,6 +260,7 @@ func CompleteDownloadItem(id, filePath string, finalSize float64) {
 			downloadQueue[i].FilePath = filePath
 			downloadQueue[i].Progress = finalSize
 			downloadQueue[i].TotalSize = finalSize
+			downloadQueue[i].Source = source
 
 			totalDownloadedLock.Lock()
 			totalDownloaded += finalSize

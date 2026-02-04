@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { InputWithContext } from "@/components/ui/input-with-context";
-import { CloudDownload, XCircle, Link, Search, X, ChevronDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { CloudDownload, XCircle, Link, Search, X, ChevronDown, ChevronLeft, ChevronRight, Calendar, Music2 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger, } from "@/components/ui/tooltip";
 import { FetchHistory } from "@/components/FetchHistory";
@@ -11,6 +12,16 @@ import { backend } from "../../wailsjs/go/models";
 import { cn } from "@/lib/utils";
 import { useTypingEffect } from "@/hooks/useTypingEffect";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+// Billboard Hot 100 icon (the "B" logo)
+const BillboardIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90" className={`inline-block fill-current ${className || ""}`}>
+        <path d="M34.995 31.265V8H18v73.284h16.693v-4.819C38.717 80.257 43.039 82 48.37 82 61.341 82 72 70.316 72 55.15c0-16.094-11.058-27.265-25.238-27.265-4.626 0-8.449 1.027-11.767 3.38Zm.102 23.918c0-5.544 4.413-10.042 9.856-10.042 5.44 0 9.853 4.498 9.853 10.042 0 5.549-4.413 10.047-9.853 10.047-5.443 0-9.856-4.498-9.856-10.047Z" fillRule="nonzero"/>
+    </svg>
+);
+
+export type InputMode = "fetch" | "search" | "billboard";
+
 const FETCH_PLACEHOLDERS = [
     "https://open.spotify.com/track/...",
     "https://open.spotify.com/album/...",
@@ -51,12 +62,17 @@ interface SearchBarProps {
     onHistorySelect: (item: HistoryItem) => void;
     onHistoryRemove: (id: string) => void;
     hasResult: boolean;
-    searchMode: boolean;
-    onSearchModeChange: (isSearch: boolean) => void;
+    mode: InputMode;
+    onModeChange: (mode: InputMode) => void;
     region: string;
     onRegionChange: (region: string) => void;
+    // Billboard props
+    billboardDate?: string;
+    onBillboardDateChange?: (date: string) => void;
+    onFetchBillboard?: () => void;
+    billboardLoading?: boolean;
 }
-export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, history, onHistorySelect, onHistoryRemove, hasResult, searchMode, onSearchModeChange, region, onRegionChange }: SearchBarProps) {
+export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, history, onHistorySelect, onHistoryRemove, hasResult, mode, onModeChange, region, onRegionChange, billboardDate, onBillboardDateChange, onFetchBillboard, billboardLoading }: SearchBarProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<backend.SearchResponse | null>(null);
     const [isSearching, setIsSearching] = useState(false);
@@ -71,7 +87,7 @@ export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, hist
         playlists: false,
     });
     const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const placeholders = searchMode ? SEARCH_PLACEHOLDERS : FETCH_PLACEHOLDERS;
+    const placeholders = mode === "search" ? SEARCH_PLACEHOLDERS : FETCH_PLACEHOLDERS;
     const placeholderText = useTypingEffect(placeholders);
     useEffect(() => {
         try {
@@ -113,7 +129,7 @@ export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, hist
         });
     };
     useEffect(() => {
-        if (!searchMode || !searchQuery.trim()) {
+        if (mode !== "search" || !searchQuery.trim()) {
             return;
         }
         if (searchQuery.trim() === lastSearchedQuery) {
@@ -157,7 +173,7 @@ export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, hist
                 clearTimeout(searchTimeoutRef.current);
             }
         };
-    }, [searchQuery, searchMode, lastSearchedQuery]);
+    }, [searchQuery, mode, lastSearchedQuery]);
     const handleLoadMore = async () => {
         if (!searchResults || !lastSearchedQuery || isLoadingMore)
             return;
@@ -202,7 +218,7 @@ export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, hist
         }
     };
     const handleResultClick = (externalUrl: string) => {
-        onSearchModeChange(false);
+        onModeChange("fetch");
         onFetchUrl(externalUrl);
     };
     const formatDuration = (ms: number) => {
@@ -233,21 +249,119 @@ export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, hist
         { key: "artists", label: "Artists" },
         { key: "playlists", label: "Playlists" },
     ];
+
+    const cycleMode = () => {
+        const modes: InputMode[] = ["fetch", "search", "billboard"];
+        const currentIndex = modes.indexOf(mode);
+        const nextIndex = (currentIndex + 1) % modes.length;
+        onModeChange(modes[nextIndex]);
+    };
+
+    const getModeIcon = () => {
+        switch (mode) {
+            case "fetch": return <Link className="h-4 w-4" />;
+            case "search": return <Search className="h-4 w-4" />;
+            case "billboard": return <BillboardIcon className="w-4 h-4" />;
+        }
+    };
+
+    const getModeTooltip = () => {
+        switch (mode) {
+            case "fetch": return "Switch to Search";
+            case "search": return "Switch to Billboard";
+            case "billboard": return "Switch to Fetch";
+        }
+    };
+
+    const handleDateChange = (offset: number) => {
+        if (!billboardDate || !onBillboardDateChange) return;
+        const date = new Date(billboardDate + "T00:00:00"); // Parse as local time, not UTC
+        date.setDate(date.getDate() + (offset * 7)); // Move by weeks
+        // Format as YYYY-MM-DD using local time components
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        onBillboardDateChange(`${year}-${month}-${day}`);
+    };
+
+    // Billboard mode - show date picker and fetch button
+    if (mode === "billboard") {
+        return (
+            <div className="flex gap-2">
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="outline" size="icon" className="shrink-0" onClick={cycleMode}>
+                            {getModeIcon()}
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>{getModeTooltip()}</p>
+                    </TooltipContent>
+                </Tooltip>
+
+                <div className="flex items-center gap-1 flex-1">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0"
+                        onClick={() => handleDateChange(-1)}
+                        disabled={billboardLoading}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <div className="relative flex-1">
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Input
+                            type="date"
+                            value={billboardDate || ""}
+                            onChange={(e) => onBillboardDateChange?.(e.target.value)}
+                            className="pl-9 text-center"
+                            disabled={billboardLoading}
+                        />
+                    </div>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0"
+                        onClick={() => handleDateChange(1)}
+                        disabled={billboardLoading}
+                    >
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+
+                <Button onClick={onFetchBillboard} disabled={billboardLoading || !billboardDate}>
+                    {billboardLoading ? (
+                        <>
+                            <Spinner />
+                            Fetching...
+                        </>
+                    ) : (
+                        <>
+                            <Music2 className="h-4 w-4" />
+                            Fetch Chart
+                        </>
+                    )}
+                </Button>
+            </div>
+        );
+    }
+
     return (<div className="space-y-4">
             <div className="flex gap-2">
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button variant="outline" size="icon" className="shrink-0" onClick={() => onSearchModeChange(!searchMode)}>
-                            {searchMode ? <Link className="h-4 w-4"/> : <Search className="h-4 w-4"/>}
+                        <Button variant="outline" size="icon" className="shrink-0" onClick={cycleMode}>
+                            {getModeIcon()}
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                        <p>{searchMode ? "Fetch Mode" : "Search Mode"}</p>
+                        <p>{getModeTooltip()}</p>
                     </TooltipContent>
                 </Tooltip>
 
                 <div className="relative flex-1">
-                    {!searchMode ? (<>
+                    {mode === "fetch" ? (<>
                             <InputWithContext id="spotify-url" placeholder={placeholderText} value={url} onChange={(e) => onUrlChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onFetch()} className="pr-8"/>
                             {url && (<button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer" onClick={() => onUrlChange("")}>
                                     <XCircle className="h-4 w-4"/>
@@ -264,7 +378,7 @@ export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, hist
                         </>)}
                 </div>
 
-                {!searchMode && (<>
+                {mode === "fetch" && (<>
                         <Select value={region} onValueChange={onRegionChange}>
                             <SelectTrigger className="w-[70px] shrink-0">
                                 <SelectValue placeholder="Region"/>
@@ -287,9 +401,9 @@ export function SearchBar({ url, loading, onUrlChange, onFetch, onFetchUrl, hist
                     </>)}
             </div>
 
-            {!searchMode && !hasResult && (<FetchHistory history={history} onSelect={onHistorySelect} onRemove={onHistoryRemove}/>)}
+            {mode === "fetch" && !hasResult && (<FetchHistory history={history} onSelect={onHistorySelect} onRemove={onHistoryRemove}/>)}
 
-            {searchMode && (<div className="space-y-4">
+            {mode === "search" && (<div className="space-y-4">
                     {!searchQuery && !searchResults && recentSearches.length > 0 && (<div className="space-y-2">
                             <p className="text-sm text-muted-foreground">Recent Searches</p>
                             <div className="flex flex-wrap gap-2">

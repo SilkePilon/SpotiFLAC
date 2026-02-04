@@ -187,6 +187,21 @@ func (a *App) SearchSpotifyByType(req SpotifySearchByTypeRequest) ([]backend.Sea
 	return backend.SearchSpotifyByType(ctx, req.Query, req.SearchType, req.Limit, req.Offset)
 }
 
+type BillboardRequest struct {
+	Date string `json:"date"`
+}
+
+func (a *App) FetchBillboardHot100(req BillboardRequest) (*backend.BillboardChart, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	return backend.FetchBillboardHot100(ctx, req.Date)
+}
+
+func (a *App) GetCurrentBillboardDate() string {
+	return backend.GetCurrentBillboardDate()
+}
+
 func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 
 	if req.Service == "qobuz" && req.ISRC == "" && req.SpotifyID == "" {
@@ -479,13 +494,13 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 
 		if fileInfo, statErr := os.Stat(filename); statErr == nil {
 			finalSize := float64(fileInfo.Size()) / (1024 * 1024)
-			backend.CompleteDownloadItem(itemID, filename, finalSize)
+			backend.CompleteDownloadItem(itemID, filename, finalSize, req.Service)
 		} else {
 
-			backend.CompleteDownloadItem(itemID, filename, 0)
+			backend.CompleteDownloadItem(itemID, filename, 0, req.Service)
 		}
 
-		go func(fPath, track, artist, album, sID, cover, format string) {
+		go func(fPath, track, artist, album, sID, cover, format, source string) {
 			quality := "Unknown"
 			durationStr := "--:--"
 
@@ -508,6 +523,7 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 				Quality:     quality,
 				Format:      format,
 				Path:        fPath,
+				Source:      source,
 			}
 
 			if item.Format == "" || item.Format == "LOSSLESS" {
@@ -523,7 +539,7 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 			}
 
 			backend.AddHistoryItem(item, "SpotiFLAC")
-		}(filename, req.TrackName, req.ArtistName, req.AlbumName, req.SpotifyID, req.CoverURL, req.AudioFormat)
+		}(filename, req.TrackName, req.ArtistName, req.AlbumName, req.SpotifyID, req.CoverURL, req.AudioFormat, req.Service)
 	}
 
 	return DownloadResponse{

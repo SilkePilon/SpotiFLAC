@@ -23,6 +23,7 @@ type HistoryItem struct {
 	Format      string `json:"format"`
 	Path        string `json:"path"`
 	Timestamp   int64  `json:"timestamp"`
+	Source      string `json:"source"`
 }
 
 var historyDB *bolt.DB

@@ -54,6 +54,10 @@ interface TrackListProps {
 }
 export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, currentPage, itemsPerPage, showCheckboxes = false, hideAlbumColumn = false, folderName, isArtistDiscography = false, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, checkingAvailabilityTrack, availabilityMap, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onCheckAvailability, onDownloadCover, onPageChange, onAlbumClick, onArtistClick, onTrackClick, }: TrackListProps) {
     const { playPreview, loadingPreview, playingTrack } = usePreview();
+    
+    // Use isrc or spotify_id as the track key for selection and download tracking
+    const getTrackKey = (track: TrackMetadata) => track.isrc || track.spotify_id || "";
+    
     let filteredTracks = tracks.filter((track) => {
         if (!searchQuery)
             return true;
@@ -104,15 +108,15 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
     }
     else if (sortBy === "downloaded") {
         filteredTracks = [...filteredTracks].sort((a, b) => {
-            const aDownloaded = downloadedTracks.has(a.isrc);
-            const bDownloaded = downloadedTracks.has(b.isrc);
+            const aDownloaded = downloadedTracks.has(getTrackKey(a));
+            const bDownloaded = downloadedTracks.has(getTrackKey(b));
             return (bDownloaded ? 1 : 0) - (aDownloaded ? 1 : 0);
         });
     }
     else if (sortBy === "not-downloaded") {
         filteredTracks = [...filteredTracks].sort((a, b) => {
-            const aDownloaded = downloadedTracks.has(a.isrc);
-            const bDownloaded = downloadedTracks.has(b.isrc);
+            const aDownloaded = downloadedTracks.has(getTrackKey(a));
+            const bDownloaded = downloadedTracks.has(getTrackKey(b));
             return (aDownloaded ? 1 : 0) - (bDownloaded ? 1 : 0);
         });
     }
@@ -149,9 +153,9 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
         }
         return pages;
     };
-    const tracksWithIsrc = filteredTracks.filter((track) => track.isrc);
-    const allSelected = tracksWithIsrc.length > 0 &&
-        tracksWithIsrc.every((track) => selectedTracks.includes(track.isrc));
+    const selectableTracks = filteredTracks.filter((track) => getTrackKey(track));
+    const allSelected = selectableTracks.length > 0 &&
+        selectableTracks.every((track) => selectedTracks.includes(getTrackKey(track)));
     const formatDuration = (ms: number) => {
         const minutes = Math.floor(ms / 60000);
         const seconds = Math.floor((ms % 60000) / 1000);
@@ -196,9 +200,12 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
           </thead>
           <tbody>
             {paginatedTracks.map((track, index) => (<tr key={index} className="border-b transition-colors hover:bg-muted/50">
-              {showCheckboxes && (<td className="p-4 align-middle">
-                {track.isrc && (<Checkbox checked={selectedTracks.includes(track.isrc)} onCheckedChange={() => onToggleTrack(track.isrc)}/>)}
-              </td>)}
+              {showCheckboxes && (() => {
+                const trackKey = getTrackKey(track);
+                return (<td className="p-4 align-middle">
+                  {trackKey && (<Checkbox checked={selectedTracks.includes(trackKey)} onCheckedChange={() => onToggleTrack(trackKey)}/>)}
+                </td>);
+              })()}
               <td className="p-4 align-middle text-sm text-muted-foreground">
                 <div className="flex flex-col items-center gap-0.5">
                   <span>{startIndex + index + 1}</span>
@@ -223,7 +230,10 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
                       </span>) : (<span className="font-medium">{track.name}</span>)}
                       {track.is_explicit && (<span className="inline-flex items-center justify-center bg-red-600 text-white text-[10px] h-4 w-4 rounded shrink-0" title="Explicit">E</span>)}
 
-                      {skippedTracks.has(track.isrc) ? (<FileCheck className="h-4 w-4 text-yellow-500 shrink-0"/>) : downloadedTracks.has(track.isrc) ? (<CheckCircle className="h-4 w-4 text-green-500 shrink-0"/>) : failedTracks.has(track.isrc) ? (<XCircle className="h-4 w-4 text-red-500 shrink-0"/>) : null}
+                      {(() => {
+                        const trackKey = getTrackKey(track);
+                        return skippedTracks.has(trackKey) ? (<FileCheck className="h-4 w-4 text-yellow-500 shrink-0"/>) : downloadedTracks.has(trackKey) ? (<CheckCircle className="h-4 w-4 text-green-500 shrink-0"/>) : failedTracks.has(trackKey) ? (<XCircle className="h-4 w-4 text-red-500 shrink-0"/>) : null;
+                      })()}
                     </div>
                     <span className="text-sm text-muted-foreground">
                       {track.artists_data && track.artists_data.length > 0 ? ((() => {
@@ -270,16 +280,19 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
               </td>
               <td className="p-4 align-middle text-center">
                 <div className="flex items-center justify-center gap-1">
-                  {track.isrc && (<Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button onClick={() => onDownloadTrack(track.isrc, track.name, track.artists, track.album_name, track.spotify_id, folderName, track.duration_ms, startIndex + index + 1, track.album_artist, track.release_date, track.images, track.track_number, track.disc_number, track.total_tracks, track.total_discs, track.copyright, track.publisher)} size="icon" disabled={isDownloading || downloadingTrack === track.isrc}>
-                        {downloadingTrack === track.isrc ? (<Spinner />) : skippedTracks.has(track.isrc) ? (<FileCheck className="h-4 w-4"/>) : downloadedTracks.has(track.isrc) ? (<CheckCircle className="h-4 w-4"/>) : failedTracks.has(track.isrc) ? (<XCircle className="h-4 w-4"/>) : (<Download className="h-4 w-4"/>)}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {downloadingTrack === track.isrc ? (<p>Downloading...</p>) : skippedTracks.has(track.isrc) ? (<p>Already exists</p>) : downloadedTracks.has(track.isrc) ? (<p>Downloaded</p>) : failedTracks.has(track.isrc) ? (<p>Failed</p>) : (<p>Download Track</p>)}
-                    </TooltipContent>
-                  </Tooltip>)}
+                  {(track.isrc || track.spotify_id) && (() => {
+                    const trackKey = track.isrc || track.spotify_id || "";
+                    return (<Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button onClick={() => onDownloadTrack(trackKey, track.name, track.artists, track.album_name, track.spotify_id, folderName, track.duration_ms, startIndex + index + 1, track.album_artist, track.release_date, track.images, track.track_number, track.disc_number, track.total_tracks, track.total_discs, track.copyright, track.publisher)} size="icon" disabled={isDownloading || downloadingTrack === trackKey}>
+                          {downloadingTrack === trackKey ? (<Spinner />) : skippedTracks.has(trackKey) ? (<FileCheck className="h-4 w-4"/>) : downloadedTracks.has(trackKey) ? (<CheckCircle className="h-4 w-4"/>) : failedTracks.has(trackKey) ? (<XCircle className="h-4 w-4"/>) : (<Download className="h-4 w-4"/>)}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {downloadingTrack === trackKey ? (<p>Downloading...</p>) : skippedTracks.has(trackKey) ? (<p>Already exists</p>) : downloadedTracks.has(trackKey) ? (<p>Downloaded</p>) : failedTracks.has(trackKey) ? (<p>Failed</p>) : (<p>Download Track</p>)}
+                      </TooltipContent>
+                    </Tooltip>);
+                  })()}
                   {track.spotify_id && (<Tooltip>
                     <TooltipTrigger asChild>
                       <Button onClick={() => playPreview(track.spotify_id!, track.name)} size="icon" variant="outline" disabled={loadingPreview === track.spotify_id}>

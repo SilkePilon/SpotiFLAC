@@ -2,9 +2,17 @@ import { GetDefaults, LoadSettings, SaveSettings as SaveToBackend } from "../../
 export type FontFamily = "google-sans" | "inter" | "poppins" | "roboto" | "dm-sans" | "plus-jakarta-sans" | "manrope" | "space-grotesk" | "noto-sans" | "nunito-sans" | "figtree" | "raleway" | "public-sans" | "outfit" | "jetbrains-mono" | "geist-sans" | "bricolage-grotesque";
 export type FolderPreset = "none" | "artist" | "album" | "year-album" | "year-artist-album" | "artist-album" | "artist-year-album" | "artist-year-nested-album" | "album-artist" | "album-artist-album" | "album-artist-year-album" | "album-artist-year-nested-album" | "year" | "year-artist" | "custom";
 export type FilenamePreset = "title" | "title-artist" | "artist-title" | "track-title" | "track-title-artist" | "track-artist-title" | "title-album-artist" | "track-title-album-artist" | "artist-album-title" | "track-dash-title" | "disc-track-title" | "disc-track-title-artist" | "custom";
+export type SourceType = "tidal" | "qobuz" | "amazon";
+
+export interface SourceConfig {
+    id: SourceType;
+    enabled: boolean;
+    quality: string; // "LOSSLESS" | "HI_RES_LOSSLESS" for Tidal, "6" | "7" for Qobuz, "original" for Amazon
+}
+
 export interface Settings {
     downloadPath: string;
-    downloader: "auto" | "tidal" | "qobuz" | "amazon";
+    downloader: "auto" | "tidal" | "qobuz" | "amazon"; // deprecated, kept for migration
     theme: string;
     themeMode: "auto" | "light" | "dark";
     fontFamily: FontFamily;
@@ -23,9 +31,11 @@ export interface Settings {
     tidalQuality: "LOSSLESS" | "HI_RES_LOSSLESS";
     qobuzQuality: "6" | "7";
     amazonQuality: "original";
-    autoOrder: "tidal-qobuz-amazon" | "tidal-amazon-qobuz" | "qobuz-tidal-amazon" | "qobuz-amazon-tidal" | "amazon-tidal-qobuz" | "amazon-qobuz-tidal" | "tidal-qobuz" | "tidal-amazon" | "qobuz-tidal" | "qobuz-amazon" | "amazon-tidal" | "amazon-qobuz";
-    autoQuality: "16" | "24";
+    autoOrder: "tidal-qobuz-amazon" | "tidal-amazon-qobuz" | "qobuz-tidal-amazon" | "qobuz-amazon-tidal" | "amazon-tidal-qobuz" | "amazon-qobuz-tidal" | "tidal-qobuz" | "tidal-amazon" | "qobuz-tidal" | "qobuz-amazon" | "amazon-tidal" | "amazon-qobuz"; // deprecated
+    autoQuality: "16" | "24"; // deprecated
     allowFallback: boolean;
+    // New source ordering system
+    sourceOrder: SourceConfig[];
 }
 export const FOLDER_PRESETS: Record<FolderPreset, {
     label: string;
@@ -81,6 +91,12 @@ function detectOS(): "Windows" | "linux/MacOS" {
     }
     return "linux/MacOS";
 }
+export const DEFAULT_SOURCE_ORDER: SourceConfig[] = [
+    { id: "tidal", enabled: true, quality: "LOSSLESS" },
+    { id: "qobuz", enabled: true, quality: "6" },
+    { id: "amazon", enabled: true, quality: "original" },
+];
+
 export const DEFAULT_SETTINGS: Settings = {
     downloadPath: "",
     downloader: "auto",
@@ -101,7 +117,8 @@ export const DEFAULT_SETTINGS: Settings = {
     amazonQuality: "original",
     autoOrder: "tidal-qobuz-amazon",
     autoQuality: "16",
-    allowFallback: true
+    allowFallback: true,
+    sourceOrder: DEFAULT_SOURCE_ORDER,
 };
 export const FONT_OPTIONS: {
     value: FontFamily;
@@ -145,6 +162,84 @@ async function fetchDefaultPath(): Promise<string> {
 }
 const SETTINGS_KEY = "spotiflac-settings";
 let cachedSettings: Settings | null = null;
+
+/**
+ * Migrate old settings format to new sourceOrder system
+ */
+function migrateToSourceOrder(parsed: any): SourceConfig[] {
+    const sourceOrder: SourceConfig[] = [];
+    
+    // If using old auto mode with autoOrder
+    if (parsed.downloader === "auto" && parsed.autoOrder) {
+        const orderStr = parsed.autoOrder as string;
+        const sources = orderStr.split("-") as SourceType[];
+        const is24Bit = parsed.autoQuality === "24";
+        
+        for (const source of sources) {
+            if (source === "tidal") {
+                sourceOrder.push({
+                    id: "tidal",
+                    enabled: true,
+                    quality: is24Bit ? "HI_RES_LOSSLESS" : "LOSSLESS"
+                });
+            } else if (source === "qobuz") {
+                sourceOrder.push({
+                    id: "qobuz",
+                    enabled: true,
+                    quality: is24Bit ? "7" : "6"
+                });
+            } else if (source === "amazon") {
+                sourceOrder.push({
+                    id: "amazon",
+                    enabled: true,
+                    quality: "original"
+                });
+            }
+        }
+        
+        // Add any missing sources as disabled
+        const allSources: SourceType[] = ["tidal", "qobuz", "amazon"];
+        for (const s of allSources) {
+            if (!sourceOrder.find(so => so.id === s)) {
+                sourceOrder.push({
+                    id: s,
+                    enabled: false,
+                    quality: s === "tidal" ? "LOSSLESS" : s === "qobuz" ? "6" : "original"
+                });
+            }
+        }
+    }
+    // If using single source mode
+    else if (parsed.downloader && parsed.downloader !== "auto") {
+        const source = parsed.downloader as SourceType;
+        const allSources: SourceType[] = ["tidal", "qobuz", "amazon"];
+        
+        // Put the selected source first and enabled, rest disabled
+        sourceOrder.push({
+            id: source,
+            enabled: true,
+            quality: source === "tidal" ? (parsed.tidalQuality || "LOSSLESS") :
+                     source === "qobuz" ? (parsed.qobuzQuality || "6") : "original"
+        });
+        
+        for (const s of allSources) {
+            if (s !== source) {
+                sourceOrder.push({
+                    id: s,
+                    enabled: false,
+                    quality: s === "tidal" ? "LOSSLESS" : s === "qobuz" ? "6" : "original"
+                });
+            }
+        }
+    }
+    // Default order
+    else {
+        return [...DEFAULT_SOURCE_ORDER];
+    }
+    
+    return sourceOrder;
+}
+
 function getSettingsFromLocalStorage(): Settings {
     try {
         const stored = localStorage.getItem(SETTINGS_KEY);
@@ -210,6 +305,10 @@ function getSettingsFromLocalStorage(): Settings {
             }
             if (!('allowFallback' in parsed)) {
                 parsed.allowFallback = true;
+            }
+            // Migrate to new sourceOrder system
+            if (!('sourceOrder' in parsed) || !Array.isArray(parsed.sourceOrder)) {
+                parsed.sourceOrder = migrateToSourceOrder(parsed);
             }
             return { ...DEFAULT_SETTINGS, ...parsed };
         }
@@ -289,6 +388,10 @@ export async function loadSettings(): Promise<Settings> {
             }
             if (!('allowFallback' in parsed)) {
                 parsed.allowFallback = true;
+            }
+            // Migrate to new sourceOrder system
+            if (!('sourceOrder' in parsed) || !Array.isArray(parsed.sourceOrder)) {
+                parsed.sourceOrder = migrateToSourceOrder(parsed);
             }
             cachedSettings = { ...DEFAULT_SETTINGS, ...parsed };
             return cachedSettings!;

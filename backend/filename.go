@@ -119,13 +119,28 @@ func SanitizeFilename(name string) string {
 }
 
 func NormalizePath(folderPath string) string {
-
+	// Preserve UNC path prefix on Windows
+	if strings.HasPrefix(folderPath, "\\\\") {
+		// UNC path - normalize forward slashes to backslashes but preserve the UNC prefix
+		normalized := strings.ReplaceAll(folderPath[2:], "/", string(filepath.Separator))
+		return "\\\\" + normalized
+	}
 	return strings.ReplaceAll(folderPath, "/", string(filepath.Separator))
 }
 
 func SanitizeFolderPath(folderPath string) string {
+	// Check for UNC path (starts with \\)
+	isUNC := strings.HasPrefix(folderPath, "\\\\")
+	var uncPrefix string
+	workPath := folderPath
 
-	normalizedPath := strings.ReplaceAll(folderPath, "/", string(filepath.Separator))
+	if isUNC {
+		// Extract UNC prefix and work with the rest
+		uncPrefix = "\\\\"
+		workPath = folderPath[2:]
+	}
+
+	normalizedPath := strings.ReplaceAll(workPath, "/", string(filepath.Separator))
 
 	sep := string(filepath.Separator)
 
@@ -133,13 +148,22 @@ func SanitizeFolderPath(folderPath string) string {
 	sanitizedParts := make([]string, 0, len(parts))
 
 	for i, part := range parts {
+		// For UNC paths, keep the server name and share name as-is (first two parts after \\)
+		if isUNC && i < 2 {
+			if part != "" {
+				sanitizedParts = append(sanitizedParts, part)
+			}
+			continue
+		}
 
-		if i == 0 && len(part) == 2 && part[1] == ':' {
+		// Handle drive letters on Windows (e.g., "C:")
+		if !isUNC && i == 0 && len(part) == 2 && part[1] == ':' {
 			sanitizedParts = append(sanitizedParts, part)
 			continue
 		}
 
-		if i == 0 && part == "" {
+		// Handle root path on Unix
+		if !isUNC && i == 0 && part == "" {
 			sanitizedParts = append(sanitizedParts, part)
 			continue
 		}
@@ -150,7 +174,11 @@ func SanitizeFolderPath(folderPath string) string {
 		}
 	}
 
-	return strings.Join(sanitizedParts, sep)
+	result := strings.Join(sanitizedParts, sep)
+	if isUNC {
+		return uncPrefix + result
+	}
+	return result
 }
 
 func sanitizeFolderName(name string) string { return SanitizeFilename(name) }

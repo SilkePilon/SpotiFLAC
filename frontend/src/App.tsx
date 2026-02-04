@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useLayoutEffect } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
 import { Search, X, ArrowUp } from "lucide-react";
@@ -26,7 +26,7 @@ import { SettingsPage } from "@/components/SettingsPage";
 import { DebugLoggerPage } from "@/components/DebugLoggerPage";
 import { AboutPage } from "@/components/AboutPage";
 import { HistoryPage } from "@/components/HistoryPage";
-import { BillboardPage } from "@/components/BillboardPage";
+import { BillboardPage, type BillboardPageRef } from "@/components/BillboardPage";
 import type { HistoryItem } from "@/components/FetchHistory";
 import { useDownload } from "@/hooks/useDownload";
 import { useMetadata } from "@/hooks/useMetadata";
@@ -50,6 +50,8 @@ function App() {
     const [inputMode, setInputMode] = useState<InputMode>("fetch");
     const [region, setRegion] = useState(() => localStorage.getItem("spotiflac_region") || "US");
     const [billboardDate, setBillboardDate] = useState<string>("");
+    const [billboardLoading, setBillboardLoading] = useState(false);
+    const billboardRef = useRef<BillboardPageRef>(null);
     useEffect(() => {
         localStorage.setItem("spotiflac_region", region);
     }, [region]);
@@ -473,14 +475,11 @@ function App() {
                         if (updatedUrl) {
                             setSpotifyUrl(updatedUrl);
                         }
-                    }} history={fetchHistory} onHistorySelect={handleHistorySelect} onHistoryRemove={removeFromHistory} hasResult={!!metadata.metadata} mode={inputMode} onModeChange={setInputMode} region={region} onRegionChange={setRegion} billboardDate={billboardDate} onBillboardDateChange={setBillboardDate} onFetchBillboard={() => {
-                        // Trigger fetch chart via the exposed window function
-                        if ((window as any).__billboardFetch) {
-                            (window as any).__billboardFetch();
-                        }
+                    }} history={fetchHistory} onHistorySelect={handleHistorySelect} onHistoryRemove={removeFromHistory} hasResult={!!metadata.metadata} mode={inputMode} onModeChange={setInputMode} region={region} onRegionChange={setRegion} billboardDate={billboardDate} onBillboardDateChange={setBillboardDate} billboardLoading={billboardLoading} onFetchBillboard={() => {
+                        billboardRef.current?.fetchChart();
                     }}/>
 
-                    {inputMode === "billboard" && (<BillboardPage region={region} billboardDate={billboardDate} onBillboardDateChange={setBillboardDate}/>)}
+                    {inputMode === "billboard" && (<BillboardPage ref={billboardRef} region={region} billboardDate={billboardDate} onBillboardDateChange={setBillboardDate} onLoadingChange={setBillboardLoading}/>)}
 
                     {inputMode !== "billboard" && inputMode === "fetch" && metadata.metadata && renderMetadata()}
                 </>);

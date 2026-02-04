@@ -202,14 +202,16 @@ function migrateToSourceOrder(parsed: any): SourceConfig[] {
             }
         }
         
-        // Add any missing sources as disabled
+        // Add any missing sources as disabled, preserving existing quality settings
         const allSources: SourceType[] = ["tidal", "qobuz", "amazon"];
         for (const s of allSources) {
             if (!sourceOrder.find(so => so.id === s)) {
                 sourceOrder.push({
                     id: s,
                     enabled: false,
-                    quality: s === "tidal" ? "LOSSLESS" : s === "qobuz" ? "6" : "original"
+                    quality: s === "tidal" ? (parsed.tidalQuality || "LOSSLESS") : 
+                             s === "qobuz" ? (parsed.qobuzQuality || "6") : 
+                             (parsed.amazonQuality || "original")
                 });
             }
         }
@@ -227,12 +229,15 @@ function migrateToSourceOrder(parsed: any): SourceConfig[] {
                      source === "qobuz" ? (parsed.qobuzQuality || "6") : "original"
         });
         
+        // Add disabled sources, preserving their existing quality settings
         for (const s of allSources) {
             if (s !== source) {
                 sourceOrder.push({
                     id: s,
                     enabled: false,
-                    quality: s === "tidal" ? "LOSSLESS" : s === "qobuz" ? "6" : "original"
+                    quality: s === "tidal" ? (parsed.tidalQuality || "LOSSLESS") : 
+                             s === "qobuz" ? (parsed.qobuzQuality || "6") : 
+                             (parsed.amazonQuality || "original")
                 });
             }
         }

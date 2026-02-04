@@ -54,6 +54,10 @@ interface TrackListProps {
 }
 export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, currentPage, itemsPerPage, showCheckboxes = false, hideAlbumColumn = false, folderName, isArtistDiscography = false, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, checkingAvailabilityTrack, availabilityMap, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onCheckAvailability, onDownloadCover, onPageChange, onAlbumClick, onArtistClick, onTrackClick, }: TrackListProps) {
     const { playPreview, loadingPreview, playingTrack } = usePreview();
+    
+    // Use isrc or spotify_id as the track key for selection and download tracking
+    const getTrackKey = (track: TrackMetadata) => track.isrc || track.spotify_id || "";
+    
     let filteredTracks = tracks.filter((track) => {
         if (!searchQuery)
             return true;
@@ -104,15 +108,15 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
     }
     else if (sortBy === "downloaded") {
         filteredTracks = [...filteredTracks].sort((a, b) => {
-            const aDownloaded = downloadedTracks.has(a.isrc);
-            const bDownloaded = downloadedTracks.has(b.isrc);
+            const aDownloaded = downloadedTracks.has(getTrackKey(a));
+            const bDownloaded = downloadedTracks.has(getTrackKey(b));
             return (bDownloaded ? 1 : 0) - (aDownloaded ? 1 : 0);
         });
     }
     else if (sortBy === "not-downloaded") {
         filteredTracks = [...filteredTracks].sort((a, b) => {
-            const aDownloaded = downloadedTracks.has(a.isrc);
-            const bDownloaded = downloadedTracks.has(b.isrc);
+            const aDownloaded = downloadedTracks.has(getTrackKey(a));
+            const bDownloaded = downloadedTracks.has(getTrackKey(b));
             return (aDownloaded ? 1 : 0) - (bDownloaded ? 1 : 0);
         });
     }
@@ -149,8 +153,6 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
         }
         return pages;
     };
-    // Use isrc or spotify_id as the track key for selection
-    const getTrackKey = (track: TrackMetadata) => track.isrc || track.spotify_id || "";
     const selectableTracks = filteredTracks.filter((track) => getTrackKey(track));
     const allSelected = selectableTracks.length > 0 &&
         selectableTracks.every((track) => selectedTracks.includes(getTrackKey(track)));

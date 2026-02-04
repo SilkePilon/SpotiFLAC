@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Download, FolderOpen, Loader2, StopCircle, Play, RotateCcw } from "lucide-react";
@@ -41,6 +41,11 @@ interface BillboardPageProps {
     region: string;
     billboardDate: string;
     onBillboardDateChange: (date: string) => void;
+    onLoadingChange?: (loading: boolean) => void;
+}
+
+export interface BillboardPageRef {
+    fetchChart: () => void;
 }
 
 // Cache key prefix
@@ -80,7 +85,7 @@ function saveCachedData(data: CachedBillboardData): void {
     }
 }
 
-export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
+export const BillboardPage = forwardRef<BillboardPageRef, BillboardPageProps>(function BillboardPage({ region, billboardDate, onBillboardDateChange: _onBillboardDateChange, onLoadingChange }, ref) {
     const [isLoading, setIsLoading] = useState(false);
     const [isMatchingSpotify, setIsMatchingSpotify] = useState(false);
     const [tracks, setTracks] = useState<TrackMetadata[]>([]);
@@ -97,6 +102,8 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
     const [currentMatchingTrack, setCurrentMatchingTrack] = useState<string>("");
     const [matchingStatus, setMatchingStatus] = useState<string>("");
     const stopMatchingRef = useRef(false);
+    const matchingRunIdRef = useRef(0);
+    const isMountedRef = useRef(true);
 
     const download = useDownload(region);
     const ITEMS_PER_PAGE = 50;
@@ -104,12 +111,28 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
     const BASE_DELAY = 1500;
     const RATE_LIMIT_DELAY = 10000;
 
+    // Track mounted state for cleanup
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+            stopMatchingRef.current = true; // Stop any running matching on unmount
+        };
+    }, []);
+
     // Load output directory
     useEffect(() => {
         LoadSettings().then((settings) => {
-            setOutputDir(settings.outputDir || "");
+            if (isMountedRef.current) {
+                setOutputDir(settings.outputDir || "");
+            }
         });
     }, []);
+
+    // Notify parent of loading state changes
+    useEffect(() => {
+        onLoadingChange?.(isLoading || isMatchingSpotify);
+    }, [isLoading, isMatchingSpotify, onLoadingChange]);
 
     // Try to load from cache when date changes
     useEffect(() => {
@@ -123,6 +146,14 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
             setMatchedIndices(new Set(cached.matchedIndices));
             setMatchedCount(cached.matchedIndices.length);
             toast.info(`Loaded cached chart for ${cached.chartDate}`);
+        } else {
+            // Clear previous data when switching to a date without cache
+            setTracks([]);
+            setBillboardEntries([]);
+            setChartDate("");
+            setMatchedIndices(new Set());
+            setMatchedCount(0);
+            setSelectedTracks([]);
         }
     }, [billboardDate]);
 
@@ -222,6 +253,10 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
         initialMatchedIndices?: Set<number>,
         initialMatchedCount?: number
     ) => {
+        // Increment run ID to cancel any previous runs
+        matchingRunIdRef.current++;
+        const currentRunId = matchingRunIdRef.current;
+        
         setIsMatchingSpotify(true);
         stopMatchingRef.current = false;
 
@@ -239,12 +274,17 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
                    errorMsg.includes("too many") ||
                    errorMsg.includes("quota");
         };
+        
+        // Helper to check if this run should continue
+        const shouldContinue = () => isMountedRef.current && currentRunId === matchingRunIdRef.current && !stopMatchingRef.current;
 
         // Find unmatched tracks starting from startIndex
         for (let i = startIndex; i < entries.length; i++) {
-            if (stopMatchingRef.current) {
-                setMatchingStatus("Matching stopped by user");
-                toast.info(`Matching paused at track ${i + 1}. ${matched} tracks matched.`);
+            if (!shouldContinue()) {
+                if (isMountedRef.current && currentRunId === matchingRunIdRef.current) {
+                    setMatchingStatus("Matching stopped by user");
+                    toast.info(`Matching paused at track ${i + 1}. ${matched} tracks matched.`);
+                }
                 break;
             }
 
@@ -260,7 +300,7 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
 
             let retryCount = 0;
 
-            while (retryCount < MAX_RETRIES && !stopMatchingRef.current) {
+            while (retryCount < MAX_RETRIES && shouldContinue()) {
                 try {
                     const artistName = entry.artist.split(/[,&]|Featuring|feat\./i)[0].trim();
                     const query = `${entry.title} ${artistName}`;
@@ -320,20 +360,23 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
                 }
             }
 
-            if (i < entries.length - 1 && !stopMatchingRef.current) {
+            if (i < entries.length - 1 && shouldContinue()) {
                 await delay(BASE_DELAY);
             }
         }
-
-        setIsMatchingSpotify(false);
-        setCurrentMatchingTrack("");
-        setMatchingStatus("");
         
-        // Save to cache after matching completes or is stopped
-        saveToCache();
-        
-        if (!stopMatchingRef.current && matched > 0) {
-            toast.success(`Matched ${matched} of ${entries.length} tracks with Spotify`);
+        // Only update final state if this is still the current run and component is mounted
+        if (isMountedRef.current && currentRunId === matchingRunIdRef.current) {
+            setIsMatchingSpotify(false);
+            setCurrentMatchingTrack("");
+            setMatchingStatus("");
+            
+            // Save to cache after matching completes or is stopped
+            saveToCache();
+            
+            if (!stopMatchingRef.current && matched > 0) {
+                toast.success(`Matched ${matched} of ${entries.length} tracks with Spotify`);
+            }
         }
     };
 
@@ -468,14 +511,10 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
     const matchedTracks = tracks.filter(t => isTrackMatched(t));
     const hasUnmatchedTracks = matchedIndices.size < billboardEntries.length && billboardEntries.length > 0;
 
-    // Expose fetch function for parent component to call
-    useEffect(() => {
-        // Store the fetch function on window for external access
-        (window as any).__billboardFetch = handleFetchChart;
-        return () => {
-            delete (window as any).__billboardFetch;
-        };
-    }, [billboardDate]);
+    // Expose fetch function for parent component via ref
+    useImperativeHandle(ref, () => ({
+        fetchChart: handleFetchChart
+    }), [billboardDate]);
 
     // Empty state when no chart loaded
     if (!isLoading && tracks.length === 0) {
@@ -642,7 +681,7 @@ export function BillboardPage({ region, billboardDate }: BillboardPageProps) {
             </div>
         </div>
     );
-}
+});
 
 // Export a function to get the current billboard date
 export async function getCurrentBillboardDate(): Promise<string> {

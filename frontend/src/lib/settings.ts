@@ -10,6 +10,8 @@ export interface SourceConfig {
     quality: string; // "LOSSLESS" | "HI_RES_LOSSLESS" for Tidal, "6" | "7" for Qobuz, "original" for Amazon
 }
 
+export type BillboardFolderMode = "billboard" | "artist-album";
+
 export interface Settings {
     downloadPath: string;
     downloader: "auto" | "tidal" | "qobuz" | "amazon"; // deprecated, kept for migration
@@ -36,6 +38,8 @@ export interface Settings {
     allowFallback: boolean;
     // New source ordering system
     sourceOrder: SourceConfig[];
+    // Billboard download folder mode
+    billboardFolderMode: BillboardFolderMode;
 }
 export const FOLDER_PRESETS: Record<FolderPreset, {
     label: string;
@@ -119,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
     autoQuality: "16",
     allowFallback: true,
     sourceOrder: DEFAULT_SOURCE_ORDER,
+    billboardFolderMode: "billboard",
 };
 export const FONT_OPTIONS: {
     value: FontFamily;

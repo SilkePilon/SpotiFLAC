@@ -5,13 +5,14 @@ import { Search, X, ArrowUp } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getSettings, getSettingsWithDefaults, loadSettings, saveSettings, applyThemeMode, applyFont } from "@/lib/settings";
 import { applyTheme } from "@/lib/themes";
-import { OpenFolder, CheckFFmpegInstalled, DownloadFFmpeg } from "../wailsjs/go/main/App";
+import { OpenFolder, CheckFFmpegInstalled, DownloadFFmpeg, GetCurrentBillboardDate } from "../wailsjs/go/main/App";
 import { EventsOn, EventsOff, Quit } from "../wailsjs/runtime/runtime";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { TitleBar } from "@/components/TitleBar";
 import { Sidebar, type PageType } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { SearchBar } from "@/components/SearchBar";
+import type { InputMode } from "@/components/SearchBar";
 import { TrackInfo } from "@/components/TrackInfo";
 import { AlbumInfo } from "@/components/AlbumInfo";
 import { PlaylistInfo } from "@/components/PlaylistInfo";
@@ -25,6 +26,7 @@ import { SettingsPage } from "@/components/SettingsPage";
 import { DebugLoggerPage } from "@/components/DebugLoggerPage";
 import { AboutPage } from "@/components/AboutPage";
 import { HistoryPage } from "@/components/HistoryPage";
+import { BillboardPage } from "@/components/BillboardPage";
 import type { HistoryItem } from "@/components/FetchHistory";
 import { useDownload } from "@/hooks/useDownload";
 import { useMetadata } from "@/hooks/useMetadata";
@@ -45,11 +47,23 @@ function App() {
     const [hasUpdate, setHasUpdate] = useState(false);
     const [releaseDate, setReleaseDate] = useState<string | null>(null);
     const [fetchHistory, setFetchHistory] = useState<HistoryItem[]>([]);
-    const [isSearchMode, setIsSearchMode] = useState(false);
+    const [inputMode, setInputMode] = useState<InputMode>("fetch");
     const [region, setRegion] = useState(() => localStorage.getItem("spotiflac_region") || "US");
+    const [billboardDate, setBillboardDate] = useState<string>("");
     useEffect(() => {
         localStorage.setItem("spotiflac_region", region);
     }, [region]);
+    // Initialize billboard date when switching to billboard mode
+    useEffect(() => {
+        if (inputMode === "billboard" && !billboardDate) {
+            GetCurrentBillboardDate().then(date => {
+                setBillboardDate(date);
+            }).catch(err => {
+                console.error("Failed to get current billboard date:", err);
+                setBillboardDate(new Date().toISOString().split("T")[0]);
+            });
+        }
+    }, [inputMode, billboardDate]);
     const [showScrollTop, setShowScrollTop] = useState(false);
     const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
     const [pendingPageChange, setPendingPageChange] = useState<PageType | null>(null);
@@ -459,9 +473,16 @@ function App() {
                         if (updatedUrl) {
                             setSpotifyUrl(updatedUrl);
                         }
-                    }} history={fetchHistory} onHistorySelect={handleHistorySelect} onHistoryRemove={removeFromHistory} hasResult={!!metadata.metadata} searchMode={isSearchMode} onSearchModeChange={setIsSearchMode} region={region} onRegionChange={setRegion}/>
+                    }} history={fetchHistory} onHistorySelect={handleHistorySelect} onHistoryRemove={removeFromHistory} hasResult={!!metadata.metadata} mode={inputMode} onModeChange={setInputMode} region={region} onRegionChange={setRegion} billboardDate={billboardDate} onBillboardDateChange={setBillboardDate} onFetchBillboard={() => {
+                        // Trigger fetch chart via the exposed window function
+                        if ((window as any).__billboardFetch) {
+                            (window as any).__billboardFetch();
+                        }
+                    }}/>
 
-                    {!isSearchMode && metadata.metadata && renderMetadata()}
+                    {inputMode === "billboard" && (<BillboardPage region={region} billboardDate={billboardDate} onBillboardDateChange={setBillboardDate}/>)}
+
+                    {inputMode !== "billboard" && inputMode === "fetch" && metadata.metadata && renderMetadata()}
                 </>);
         }
     };

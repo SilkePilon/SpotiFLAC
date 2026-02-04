@@ -585,6 +585,29 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                                 />
                             </div>
                         </div>
+
+                        {/* Billboard Settings */}
+                        <div className="space-y-1.5">
+                            <Label className="text-sm">Billboard Downloads</Label>
+                            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                                <div>
+                                    <Label htmlFor="billboard-folder-mode" className="cursor-pointer">Use Billboard Folder</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        {tempSettings.billboardFolderMode === "billboard" 
+                                            ? "Downloads to 'Billboard Hot 100 - [Date]' folder" 
+                                            : "Uses regular folder structure (Artist/Album)"}
+                                    </p>
+                                </div>
+                                <Switch
+                                    id="billboard-folder-mode"
+                                    checked={tempSettings.billboardFolderMode === "billboard"}
+                                    onCheckedChange={(checked) => setTempSettings((prev) => ({ 
+                                        ...prev, 
+                                        billboardFolderMode: checked ? "billboard" : "artist-album" 
+                                    }))}
+                                />
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

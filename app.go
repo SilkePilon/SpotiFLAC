@@ -187,6 +187,21 @@ func (a *App) SearchSpotifyByType(req SpotifySearchByTypeRequest) ([]backend.Sea
 	return backend.SearchSpotifyByType(ctx, req.Query, req.SearchType, req.Limit, req.Offset)
 }
 
+type BillboardRequest struct {
+	Date string `json:"date"`
+}
+
+func (a *App) FetchBillboardHot100(req BillboardRequest) (*backend.BillboardChart, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	return backend.FetchBillboardHot100(ctx, req.Date)
+}
+
+func (a *App) GetCurrentBillboardDate() string {
+	return backend.GetCurrentBillboardDate()
+}
+
 func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 
 	if req.Service == "qobuz" && req.ISRC == "" && req.SpotifyID == "" {
